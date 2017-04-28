@@ -1,22 +1,26 @@
 package tablestogo
 
 import (
+	"bytes"
+	"database/sql"
 	"errors"
 	"fmt"
 	"go/format"
 	"os"
 	"path/filepath"
-
-	"bytes"
 	"strings"
 
-	"database/sql"
+	"github.com/jmoiron/sqlx"
 
 	// mysql database driver
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/jmoiron/sqlx"
 	// postgres database driver
 	_ "github.com/lib/pq"
+)
+
+const (
+	DB_PG    = "pg"
+	DB_MYSQL = "mysql"
 )
 
 var (
@@ -30,20 +34,20 @@ var (
 	settings *Settings
 
 	// SupportedDbTypes represents the supported databases
-	SupportedDbTypes = []string{"pg", "mysql"}
+	SupportedDbTypes = []string{DB_PG, DB_MYSQL}
 	// SupportedOutputFormats represents the supported output formats
 	SupportedOutputFormats = []string{"c", "o"}
 
 	// DbTypeToDriverMap maps the database type to the driver names
 	DbTypeToDriverMap = map[string]string{
-		"pg":    "postgres",
-		"mysql": "mysql",
+		DB_PG:    "postgres",
+		DB_MYSQL: "mysql",
 	}
 
 	// DbDefaultPorts maps the database type to the default ports
 	DbDefaultPorts = map[string]string{
-		"pg":    "5432",
-		"mysql": "3306",
+		DB_PG:    "5432",
+		DB_MYSQL: "3306",
 	}
 
 	// map of Tagger used
@@ -97,7 +101,7 @@ func NewSettings() *Settings {
 
 	return &Settings{
 		Verbose:        false,
-		DbType:         "pg",
+		DbType:         DB_PG,
 		User:           "postgres",
 		Pswd:           "",
 		DbName:         "postgres",
@@ -221,7 +225,7 @@ func Run(s *Settings) (err error) {
 	var concreteDatabase ConcreteDatabase
 
 	switch s.DbType {
-	case "mysql":
+	case DB_MYSQL:
 		concreteDatabase = &MySQLDatabase{}
 	default: // pg
 		concreteDatabase = &PostgreDatabase{}
