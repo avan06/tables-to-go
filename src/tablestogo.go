@@ -403,7 +403,7 @@ func createStructOfTable(table *Table) (err error) {
 		structFieldsBuffer.WriteString("\t" + columnName + " " + columnType + generateTags(column) + "\n")
 
 		// collect some info for later use
-		if column.IsNullable == "YES" {
+		if database.IsNullable(column) {
 			isNullable = true
 		}
 		if isTime {
@@ -489,39 +489,29 @@ func mapDbColumnTypeToGoType(column Column) (goType string, isTime bool) {
 
 	isTime = false
 
+	var goNullType = "sql.NullString"
 	if database.IsString(column) || database.IsText(column) {
 		goType = "string"
-		if database.IsNullable(column) {
-			goType = "sql.NullString"
-		}
 	} else if database.IsInteger(column) {
 		goType = "int"
-		if database.IsNullable(column) {
-			goType = "sql.NullInt64"
-		}
+		goNullType = "sql.NullInt64"
 	} else if database.IsFloat(column) {
 		goType = "float64"
-		if database.IsNullable(column) {
-			goType = "sql.NullFloat64"
-		}
+		goNullType = "sql.NullFloat64"
 	} else if database.IsTemporal(column) {
 		goType = "time.Time"
-		if database.IsNullable(column) {
-			goType = "pq.NullTime"
-		}
+		goNullType = "pq.NullTime"
 		isTime = true
 	} else {
-
 		// TODO handle special data types
-		switch column.DataType {
-		case "boolean":
+		if column.DataType == "boolean" {
 			goType = "bool"
-			if database.IsNullable(column) {
-				goType = "sql.NullBool"
-			}
-		default:
-			goType = "sql.NullString"
+			goNullType = "sql.NullBool"
 		}
+	}
+
+	if database.IsNullable(column) {
+		goType = goNullType
 	}
 
 	return goType, isTime
