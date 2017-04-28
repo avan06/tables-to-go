@@ -218,20 +218,18 @@ func Run(s *Settings) (err error) {
 
 	createEffectiveTags()
 
-	generalDatabase := &GeneralDatabase{
-		db:       db,
-		Settings: s,
-	}
+	var concreteDatabase ConcreteDatabase
 
 	switch s.DbType {
 	case "mysql":
-		database = &MySQLDatabase{
-			GeneralDatabase: generalDatabase,
-		}
+		concreteDatabase = &MySQLDatabase{}
 	default: // pg
-		database = &PostgreDatabase{
-			GeneralDatabase: generalDatabase,
-		}
+		concreteDatabase = &PostgreDatabase{}
+	}
+
+	database = &GeneralDatabase{
+		Settings:         s,
+		ConcreteDatabase: concreteDatabase,
 	}
 
 	// connection must be appear here, database must exists at this point
@@ -316,7 +314,7 @@ func createEffectiveTags() {
 }
 
 func connect() (err error) {
-	db, err = sqlx.Connect(DbTypeToDriverMap[settings.DbType], database.CreateDataSourceName(settings))
+	db, err = sqlx.Connect(DbTypeToDriverMap[settings.DbType], database.GetDataSourceName())
 	if err != nil {
 		usingPswd := "no"
 		if settings.Pswd != "" {

@@ -3,15 +3,21 @@ package tablestogo
 import (
 	"fmt"
 	"strings"
+
+	"github.com/jmoiron/sqlx"
 )
 
 // PostgreDatabase satisfy the database interface
-type PostgreDatabase struct {
-	*GeneralDatabase
+type PostgreDatabase struct{}
+
+// CreateDataSourceName creates the DSN String to connect to this database
+func (pg *PostgreDatabase) CreateDataSourceName(settings *Settings) string {
+	return fmt.Sprintf("host=%v port=%v user=%v dbname=%v password=%v sslmode=disable",
+		settings.Host, settings.Port, settings.User, settings.DbName, settings.Pswd)
 }
 
 // GetTables gets all tables for a given schema by name
-func (pg *PostgreDatabase) GetTables() (tables []*Table, err error) {
+func (pg *PostgreDatabase) FetchTables(s *Settings) (tables []*Table, err error) {
 
 	err = db.Select(&tables, `
 		SELECT table_name
@@ -19,12 +25,12 @@ func (pg *PostgreDatabase) GetTables() (tables []*Table, err error) {
 		WHERE table_type = 'BASE TABLE'
 		AND table_schema = $1
 		ORDER BY table_name
-	`, pg.Schema)
+	`, s.Schema)
 
-	if pg.Verbose {
+	if s.Verbose {
 		if err != nil {
 			fmt.Println("> Error at GetTables()")
-			fmt.Printf("> schema: %q\r\n", pg.Schema)
+			fmt.Printf("> schema: %q\r\n", s.Schema)
 		}
 	}
 
@@ -32,9 +38,9 @@ func (pg *PostgreDatabase) GetTables() (tables []*Table, err error) {
 }
 
 // PrepareGetColumnsOfTableStmt prepares the statement for retrieving the columns of a specific table for a given database
-func (pg *PostgreDatabase) PrepareGetColumnsOfTableStmt() (err error) {
+func (pg *PostgreDatabase) GetColumnsOfTableQuery() string {
 
-	pg.GetColumnsOfTableStmt, err = db.Preparex(`
+	return `
 		SELECT
 			ic.ordinal_position,
 			ic.column_name,
@@ -56,21 +62,17 @@ func (pg *PostgreDatabase) PrepareGetColumnsOfTableStmt() (err error) {
 		WHERE ic.table_name = $1
 		AND ic.table_schema = $2
 		ORDER BY ic.ordinal_position
-	`)
-
-	return err
+	`
 }
 
 // GetColumnsOfTable executes the statement for retrieving the columns of a specific table in a given schema
-func (pg *PostgreDatabase) GetColumnsOfTable(table *Table) (err error) {
+func (pg *PostgreDatabase) FetchColumnsOfTable(s *Settings, stmt *sqlx.Stmt, table *Table) (err error) {
 
-	pg.GetColumnsOfTableStmt.Select(&table.Columns, table.TableName, pg.Schema)
+	err = stmt.Select(&table.Columns, table.TableName, s.Schema)
 
-	if pg.Verbose {
-		if err != nil {
-			fmt.Printf("> Error at GetColumnsOfTable(%v)\r\n", table.TableName)
-			fmt.Printf("> schema: %q\r\n", pg.Schema)
-		}
+	if s.Verbose && err != nil {
+		fmt.Printf("> Error at GetColumnsOfTable(%v)\r\n", table.TableName)
+		fmt.Printf("> schema: %q\r\n", s.Schema)
 	}
 
 	return err
@@ -86,10 +88,9 @@ func (pg *PostgreDatabase) IsAutoIncrement(column Column) bool {
 	return strings.Contains(column.ColumnDefault.String, "nextval")
 }
 
-// CreateDataSourceName creates the DSN String to connect to this database
-func (pg *PostgreDatabase) CreateDataSourceName(settings *Settings) string {
-	return fmt.Sprintf("host=%v port=%v user=%v dbname=%v password=%v sslmode=disable",
-		settings.Host, settings.Port, settings.User, settings.DbName, settings.Pswd)
+// IsNullable returns true if column is a nullable one
+func (pg *PostgreDatabase) IsNullable(column Column) bool {
+	return column.IsNullable == "YES"
 }
 
 // GetStringDatatypes returns the string datatypes for the postgre database
@@ -102,21 +103,11 @@ func (pg *PostgreDatabase) GetStringDatatypes() []string {
 	}
 }
 
-// IsString returns true if colum is of type string for the postgre database
-func (pg *PostgreDatabase) IsString(column Column) bool {
-	return IsStringInSlice(column.DataType, pg.GetStringDatatypes())
-}
-
 // GetTextDatatypes returns the text datatypes for the postgre database
 func (pg *PostgreDatabase) GetTextDatatypes() []string {
 	return []string{
 		"text",
 	}
-}
-
-// IsText returns true if colum is of type text for the postgre database
-func (pg *PostgreDatabase) IsText(column Column) bool {
-	return IsStringInSlice(column.DataType, pg.GetTextDatatypes())
 }
 
 // GetIntegerDatatypes returns the integer datatypes for the postgre database
@@ -131,11 +122,6 @@ func (pg *PostgreDatabase) GetIntegerDatatypes() []string {
 	}
 }
 
-// IsInteger returns true if colum is of type integer for the postgre database
-func (pg *PostgreDatabase) IsInteger(column Column) bool {
-	return IsStringInSlice(column.DataType, pg.GetIntegerDatatypes())
-}
-
 // GetFloatDatatypes returns the float datatypes for the postgre database
 func (pg *PostgreDatabase) GetFloatDatatypes() []string {
 	return []string{
@@ -144,11 +130,6 @@ func (pg *PostgreDatabase) GetFloatDatatypes() []string {
 		"real",
 		"double precision",
 	}
-}
-
-// IsFloat returns true if colum is of type float for the postgre database
-func (pg *PostgreDatabase) IsFloat(column Column) bool {
-	return IsStringInSlice(column.DataType, pg.GetFloatDatatypes())
 }
 
 // GetTemporalDatatypes returns the temporal datatypes for the postgre database
@@ -162,9 +143,4 @@ func (pg *PostgreDatabase) GetTemporalDatatypes() []string {
 		"timestamp without time zone",
 		"date",
 	}
-}
-
-// IsTemporal returns true if colum is of type temporal for the postgre database
-func (pg *PostgreDatabase) IsTemporal(column Column) bool {
-	return IsStringInSlice(column.DataType, pg.GetTemporalDatatypes())
 }
