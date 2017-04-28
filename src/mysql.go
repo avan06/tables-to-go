@@ -19,7 +19,7 @@ func (mysql *MySQLDatabase) CreateDataSourceName(settings *Settings) string {
 // GetTables gets all tables for a given database by name
 func (mysql *MySQLDatabase) FetchTables(s *Settings) (tables []*Table, err error) {
 
-	err = db.Select(&tables, `
+	err = dbh.Select(&tables, `
 		SELECT table_name
 		FROM information_schema.tables
 		WHERE table_type = 'BASE TABLE'

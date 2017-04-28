@@ -24,11 +24,11 @@ const (
 )
 
 var (
-	// holds the db instance
-	db *sqlx.DB
+	// global database handle for use in all files
+	dbh *sqlx.DB
 
 	// used concrete database, one of the supported types below
-	database Database
+	db *Database
 
 	// the global applied settings
 	settings *Settings
@@ -171,12 +171,12 @@ type StblTag string
 func (t *StblTag) GenerateTag(column Column) string {
 
 	isPk := ""
-	if database.IsPrimaryKey(column) {
+	if db.IsPrimaryKey(column) {
 		isPk = ",PRIMARY_KEY"
 	}
 
 	isAutoIncrement := ""
-	if database.IsAutoIncrement(column) {
+	if db.IsAutoIncrement(column) {
 		isAutoIncrement = ",SERIAL,AUTO_INCREMENT"
 	}
 
@@ -191,14 +191,14 @@ func (t *SQLTag) GenerateTag(column Column) string {
 
 	colType := ""
 	characterMaximumLength := ""
-	if database.IsString(column) && column.CharacterMaximumLength.Valid {
+	if db.IsString(column) && column.CharacterMaximumLength.Valid {
 		characterMaximumLength = fmt.Sprintf("(%v)", column.CharacterMaximumLength.Int64)
 	}
 
 	colType = fmt.Sprintf("type:%v%v;", column.DataType, characterMaximumLength)
 
 	isNullable := ""
-	if !database.IsNullable(column) {
+	if !db.IsNullable(column) {
 		isNullable = "not null;"
 	}
 
@@ -231,7 +231,7 @@ func Run(s *Settings) (err error) {
 		concreteDatabase = &PostgreDatabase{}
 	}
 
-	database = &GeneralDatabase{
+	db = &Database{
 		Settings:         s,
 		ConcreteDatabase: concreteDatabase,
 	}
@@ -241,7 +241,7 @@ func Run(s *Settings) (err error) {
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer dbh.Close()
 
 	return run()
 }
@@ -250,7 +250,7 @@ func Run(s *Settings) (err error) {
 func VerifySettings(settings *Settings) (err error) {
 
 	if !IsStringInSlice(settings.DbType, SupportedDbTypes) {
-		return fmt.Errorf("type of database %q not supported! %v", settings.DbType, SupportedDbTypes)
+		return fmt.Errorf("type of Database %q not supported! %v", settings.DbType, SupportedDbTypes)
 	}
 
 	if !IsStringInSlice(settings.OutputFormat, SupportedOutputFormats) {
@@ -318,23 +318,23 @@ func createEffectiveTags() {
 }
 
 func connect() (err error) {
-	db, err = sqlx.Connect(DbTypeToDriverMap[settings.DbType], database.GetDataSourceName())
+	dbh, err = sqlx.Connect(DbTypeToDriverMap[settings.DbType], db.GetDataSourceName())
 	if err != nil {
 		usingPswd := "no"
 		if settings.Pswd != "" {
 			usingPswd = "yes"
 		}
-		return fmt.Errorf("Connection to Database (type=%q, user=%q, database=%q, host='%v:%v' (using password: %v) failed:\r\n%v",
+		return fmt.Errorf("Connection to Database (type=%q, user=%q, Database=%q, host='%v:%v' (using password: %v) failed:\r\n%v",
 			settings.DbType, settings.User, settings.DbName, settings.Host, settings.Port, usingPswd, err)
 	}
-	return db.Ping()
+	return dbh.Ping()
 }
 
 func run() (err error) {
 
 	fmt.Printf("running for %q...\r\n", settings.DbType)
 
-	tables, err := database.GetTables()
+	tables, err := db.GetTables()
 
 	if err != nil {
 		return err
@@ -344,7 +344,7 @@ func run() (err error) {
 		fmt.Printf("> count of tables: %v\r\n", len(tables))
 	}
 
-	err = database.PrepareGetColumnsOfTableStmt()
+	err = db.PrepareGetColumnsOfTableStmt()
 
 	if err != nil {
 		return err
@@ -356,7 +356,7 @@ func run() (err error) {
 			fmt.Printf("> processing table %q\r\n", table.TableName)
 		}
 
-		err = database.GetColumnsOfTable(table)
+		err = db.GetColumnsOfTable(table)
 
 		if err != nil {
 			return err
@@ -403,7 +403,7 @@ func createStructOfTable(table *Table) (err error) {
 		structFieldsBuffer.WriteString("\t" + columnName + " " + columnType + generateTags(column) + "\n")
 
 		// collect some info for later use
-		if database.IsNullable(column) {
+		if db.IsNullable(column) {
 			isNullable = true
 		}
 		if isTime {
@@ -435,7 +435,7 @@ func createStructOfTable(table *Table) (err error) {
 		fileContentBuffer.WriteString("import (\n")
 
 		if isNullable {
-			fileContentBuffer.WriteString("\t\"database/sql\"\n")
+			fileContentBuffer.WriteString("\t\"Database/sql\"\n")
 		}
 
 		if timeIndicator > 0 {
@@ -490,15 +490,15 @@ func mapDbColumnTypeToGoType(column Column) (goType string, isTime bool) {
 	isTime = false
 
 	var goNullType = "sql.NullString"
-	if database.IsString(column) || database.IsText(column) {
+	if db.IsString(column) || db.IsText(column) {
 		goType = "string"
-	} else if database.IsInteger(column) {
+	} else if db.IsInteger(column) {
 		goType = "int"
 		goNullType = "sql.NullInt64"
-	} else if database.IsFloat(column) {
+	} else if db.IsFloat(column) {
 		goType = "float64"
 		goNullType = "sql.NullFloat64"
-	} else if database.IsTemporal(column) {
+	} else if db.IsTemporal(column) {
 		goType = "time.Time"
 		goNullType = "pq.NullTime"
 		isTime = true
@@ -510,7 +510,7 @@ func mapDbColumnTypeToGoType(column Column) (goType string, isTime bool) {
 		}
 	}
 
-	if database.IsNullable(column) {
+	if db.IsNullable(column) {
 		goType = goNullType
 	}
 
